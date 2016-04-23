@@ -1,9 +1,7 @@
 package net.bigpoint.assessment.gasstation;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
+import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -21,7 +19,7 @@ public class GasStationImpl implements GasStation {
     private AtomicInteger numberOfCancellationsNoGas = new AtomicInteger();
     private AtomicInteger numberOfCancellationsTooExpensive = new AtomicInteger();
 
-    private ConcurrentMap<GasType, List<GasPump>> pumps = new ConcurrentHashMap<>();
+    private ConcurrentMap<GasType, CopyOnWriteArrayList<GasPump>> pumps = new ConcurrentHashMap<>();
     private ConcurrentMap<GasType, Double> prices = new ConcurrentHashMap<>();
     private ConcurrentMap<GasPump, Lock> pumpLocks = new ConcurrentHashMap<>();
 
@@ -33,9 +31,11 @@ public class GasStationImpl implements GasStation {
 
     @Override
     public void addGasPump(GasPump pump) {
-        // use fair lock to access locked pumps in FIFO fasion
-        pumpLocks.put(pump, new ReentrantLock(true));
-        pumps.get(pump.getGasType()).add(pump);
+        // method is idempotent - it won't duplicate pumps if it is called with the same pump twice
+        // use fair lock so as to access locked pumps in FIFO fashion
+        pumpLocks.putIfAbsent(pump, new ReentrantLock(true));
+        pumps.putIfAbsent(pump.getGasType(), new CopyOnWriteArrayList<GasPump>());
+        pumps.get(pump.getGasType()).addIfAbsent(pump);
     }
 
     @Override
@@ -66,7 +66,7 @@ public class GasStationImpl implements GasStation {
     public double buyGas(GasType type, double amountInLiters, double maxPricePerLiter) throws NotEnoughGasException, GasTooExpensiveException {
         double price = getPrice(type);
         if (price > maxPricePerLiter) {
-            numberOfCancellationsNoGas.incrementAndGet();
+            numberOfCancellationsTooExpensive.incrementAndGet();
             throw new GasTooExpensiveException();
         }
 
@@ -105,6 +105,8 @@ public class GasStationImpl implements GasStation {
         numberOfCancellationsNoGas.incrementAndGet();
         throw new NotEnoughGasException();
     }
+
+    private final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
 
     private boolean tryPump(GasPump pump, double price, double amountInLiters) {
         if (pump.getRemainingAmount() >= amountInLiters) {
