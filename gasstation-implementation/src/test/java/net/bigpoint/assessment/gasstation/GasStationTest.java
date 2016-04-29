@@ -6,9 +6,10 @@ import java.util.concurrent.*;
 
 import net.bigpoint.assessment.gasstation.exceptions.GasTooExpensiveException;
 import net.bigpoint.assessment.gasstation.exceptions.NotEnoughGasException;
-import org.junit.*;
+import org.junit.Before;
+import org.junit.Test;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 public class GasStationTest {
 
@@ -118,12 +119,7 @@ public class GasStationTest {
     }
 
     private Future<Double> asyncBuyGas(ExecutorService executor, final GasType type, final double amount, final double price) {
-        Callable<Double> async = new Callable<Double>() {
-            @Override
-            public Double call() throws Exception {
-                return station.buyGas(type, amount, price);
-            }
-        };
+        Callable<Double> async = () -> station.buyGas(type, amount, price);
         return executor.submit(async);
     }
 }
